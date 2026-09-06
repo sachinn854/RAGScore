@@ -1,0 +1,21 @@
+# secrets
+.env
+
+# runtime artifacts
+.cache/
+chroma/
+results/
+
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# editor / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
