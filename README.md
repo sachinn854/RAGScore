@@ -11,9 +11,6 @@ questions with ground-truth answers; it scores a RAG pipeline's answers on:
 Built without LangChain / LlamaIndex — every piece is hand-written to keep the
 evaluation logic transparent.
 
-## Status
-Early development. See `CLAUDE.md` for the full build plan (milestones M0–M9).
-
 ## Setup
 ```bash
 python -m venv .venv
