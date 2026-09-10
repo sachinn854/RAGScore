@@ -1,8 +1,9 @@
 """Central configuration for RAGScore.
 
-Ek jagah saare knobs: API keys, models, chunking/retrieval params, paths.
-`.env` se defaults, CLI se override. Har eval run ka settings-snapshot yahi hai --
-results JSON me `masked_dict()` jaata hai taaki runs compare ho saken.
+One place for every knob: API keys, models, chunking/retrieval params, paths.
+Defaults come from `.env`, and CLI flags override them. This object is the
+settings snapshot for a single eval run -- `masked_dict()` gets written into the
+results JSON so runs can be compared later.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 
 
 def _env(key: str, default: str | None = None, *, required: bool = False) -> str:
-    """Ek env var padho; `required` ho aur khaali ho to saaf error."""
+    """Read one env var; raise a clear error if required and empty."""
     val = os.getenv(key, default)
     if required and not val:
         raise RuntimeError(f"Missing required env var: {key} (see .env.example)")
@@ -29,7 +30,7 @@ def _env(key: str, default: str | None = None, *, required: bool = False) -> str
 class Config:
     """Immutable settings snapshot for one eval run."""
 
-    # secrets -- env only, kabhi CLI/log me nahi
+    # secrets -- env only, never logged or exposed via CLI
     openrouter_api_key: str
     gemini_api_key: str
     # endpoints
@@ -39,7 +40,7 @@ class Config:
     gen_model: str
     judge_model: str
     embed_model: str
-    # knobs -- experiments inhe vary karte hain
+    # knobs -- experiments vary these
     embed_dim: int = 768
     chunk_size: int = 512
     chunk_overlap: int = 64
@@ -52,7 +53,7 @@ class Config:
 
     @classmethod
     def from_env(cls, **overrides: object) -> "Config":
-        """`.env` load karke Config banao. Non-None `overrides` sabse upar (CLI)."""
+        """Build a Config from `.env`. Non-None `overrides` win (used by the CLI)."""
         load_dotenv(_ROOT / ".env")
         base: dict[str, object] = dict(
             openrouter_api_key=_env("OPENROUTER_API_KEY", required=True),
@@ -73,17 +74,17 @@ class Config:
         return cls(**base)  # type: ignore[arg-type]
 
     def ensure_dirs(self) -> None:
-        """Artifact dirs bana do -- explicit side-effect, jab likhna ho tab call karo."""
+        """Create artifact directories. Explicit side-effect -- call before writing."""
         for d in (self.chroma_dir, self.cache_dir, self.results_dir):
             d.mkdir(parents=True, exist_ok=True)
 
     def masked_dict(self) -> dict[str, object]:
-        """Logs / results JSON ke liye -- secrets masked, Path -> str."""
+        """Serialisable view for logs / results JSON -- secrets masked, Path -> str."""
         out: dict[str, object] = {}
         for f in fields(self):
             val = getattr(self, f.name)
             if f.name.endswith("_api_key"):
-                val = (str(val)[:6] + "…") if val else ""
+                val = (str(val)[:6] + "...") if val else ""
             elif isinstance(val, Path):
                 val = str(val)
             out[f.name] = val
@@ -91,7 +92,7 @@ class Config:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Config-override flags. Modules isse `parents=[build_arg_parser()]` se reuse karein."""
+    """Config-override flags. Other modules reuse this via `parents=[build_arg_parser()]`."""
     p = argparse.ArgumentParser(add_help=False)
     g = p.add_argument_group("config overrides")
     g.add_argument("--gen-model", dest="gen_model")
@@ -105,7 +106,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def load_config(argv: list[str] | None = None) -> Config:
-    """env + CLI merge karke Config return karo."""
+    """Return a Config built from the environment merged with CLI overrides."""
     parser = argparse.ArgumentParser(parents=[build_arg_parser()])
     args = parser.parse_args(argv)
     return Config.from_env(**vars(args))

@@ -1,10 +1,10 @@
-"""LLM access layer: chat (OpenRouter) + embeddings (Gemini), with disk cache.
+"""LLM access layer: chat (OpenRouter) + embeddings (Gemini), with a disk cache.
 
-Sab LLM/embedding calls yahin se jaate hain. Do reasons:
-1. **Cache** -- same (model, params, payload) -> `.cache/<hash>.json` se jawaab,
-   koi API call nahi. Re-runs aur experiments isse sasta + repeatable.
-2. **Ek jagah** retry/backoff, aur har call ka token + approx cost tally --
-   taaki runner ek run ka total kharcha report kar sake.
+Every LLM / embedding call goes through here for two reasons:
+1. **Cache** -- the same (model, params, payload) resolves to `.cache/<hash>.json`
+   with no API call, so re-runs and experiments are cheap and repeatable.
+2. **One place** for retry/backoff and a per-call token + approximate cost tally,
+   so the runner can report the total spend for a run.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import json
 import logging
 import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import openai
@@ -23,7 +23,7 @@ from .config import Config, load_config
 
 logger = logging.getLogger("ragscore.llm")
 
-# transient errors -- inhe retry karo, baaki turant raise
+# Transient errors: retry these, raise everything else immediately.
 _RETRY_ERRORS = (
     openai.RateLimitError,
     openai.APIConnectionError,
@@ -33,13 +33,13 @@ _RETRY_ERRORS = (
 
 
 def _hash(payload: dict) -> str:
-    """Canonical JSON ka sha256 -- cache filename."""
+    """SHA-256 of the canonical JSON form -- used as the cache filename."""
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _retry(fn, *, tries: int = 4, base: float = 1.0):
-    """`fn()` ko exponential backoff ke saath tries baar chalao."""
+    """Call `fn()` with exponential backoff, up to `tries` attempts."""
     for attempt in range(1, tries + 1):
         try:
             return fn()
@@ -59,13 +59,13 @@ class ChatResult:
     model: str
     prompt_tokens: int
     completion_tokens: int
-    cost: float          # USD; 0.0 agar provider ne nahi bataya
+    cost: float          # USD; 0.0 when the provider does not report it
     cached: bool
 
 
 @dataclass
 class Usage:
-    """Ek LLM instance ke lifetime ka running tally."""
+    """Running tally over the lifetime of one LLM instance."""
 
     chat_calls: int = 0
     embed_calls: int = 0
@@ -80,7 +80,7 @@ class Usage:
 
 
 class LLM:
-    """Cached chat + embedding client for one Config."""
+    """Cached chat + embedding client for a single Config."""
 
     def __init__(self, cfg: Config | None = None) -> None:
         self.cfg = cfg or load_config()
@@ -94,7 +94,7 @@ class LLM:
             api_key=self.cfg.gemini_api_key, base_url=self.cfg.gemini_base_url
         )
 
-    # ---- cache helpers ---------------------------------------------------
+    # ---- cache helpers -------------------------------------------------
     def _cache_path(self, key: str) -> Path:
         return self._cache_dir / f"{key}.json"
 
@@ -109,7 +109,7 @@ class LLM:
             json.dumps(value, ensure_ascii=False), encoding="utf-8"
         )
 
-    # ---- chat ----------------------------------------------------------
+    # ---- chat --------------------------------------------------------
     def chat(
         self,
         messages: list[dict],
@@ -119,7 +119,7 @@ class LLM:
         max_tokens: int = 1024,
         json_mode: bool = False,
     ) -> ChatResult:
-        """OpenRouter chat completion. `json_mode=True` -> response_format json_object."""
+        """OpenRouter chat completion. `json_mode=True` sets response_format json_object."""
         model = model or self.cfg.gen_model
         req = {
             "kind": "chat",
@@ -163,9 +163,9 @@ class LLM:
         self.usage.cost += result["cost"]
         return ChatResult(**result, cached=False)
 
-    # ---- embeddings --------------------------------------------------
+    # ---- embeddings ------------------------------------------------
     def embed(self, texts: list[str], *, model: str | None = None) -> list[list[float]]:
-        """Gemini embeddings. Per-text cached -- partial hits bhi kaam karte hain."""
+        """Gemini embeddings, cached per text so partial cache hits work."""
         model = model or self.cfg.embed_model
         dim = self.cfg.embed_dim
 

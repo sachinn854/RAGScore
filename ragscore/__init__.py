@@ -1,3 +1,3 @@
-"""RAGScore — a from-scratch RAG evaluation harness."""
+"""RAGScore - a from-scratch RAG evaluation harness."""
 
 __version__ = "0.1.0"
