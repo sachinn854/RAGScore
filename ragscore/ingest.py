@@ -103,30 +103,50 @@ def _batches(items: list, size: int):
         yield items[start : start + size]
 
 
-def embed_and_store(
-    chunks: list[Chunk], *, cfg: Config | None = None, llm: LLM | None = None
-) -> "chromadb.Collection":
-    """Embed every chunk and rebuild the Chroma collection from scratch.
+def _open_collection(client: "chromadb.ClientAPI", *, rebuild: bool) -> "chromadb.Collection":
+    """Get the corpus collection, dropping it first only if `rebuild` is True."""
+    existing = {c.name for c in client.list_collections()}
+    if rebuild and COLLECTION_NAME in existing:
+        client.delete_collection(COLLECTION_NAME)
 
-    The collection is dropped and recreated on each run so a re-ingest never
-    leaves stale chunks behind. We pass our own Gemini vectors to
-    ``collection.add``; Chroma's built-in embedding model is never used.
+    return client.get_or_create_collection(
+        COLLECTION_NAME,
+        embedding_function=None,
+        # Cosine is the standard metric for semantic embeddings; it also makes
+        # `score = 1 - distance` a readable similarity in [0, 1].
+        metadata={"hnsw:space": "cosine"},
+    )
+
+
+def embed_and_store(
+    chunks: list[Chunk],
+    *,
+    cfg: Config | None = None,
+    llm: LLM | None = None,
+    rebuild: bool = False,
+) -> "chromadb.Collection":
+    """Embed every chunk and write it into the Chroma collection.
+
+    By default this is incremental: existing chunks are left untouched, a
+    chunk whose id already exists gets its text/vector updated in place
+    (`upsert`), and a chunk with a new id is simply added. Pass
+    `rebuild=True` to drop the collection first and reindex from a clean
+    slate -- do that when `chunk_size`/`chunk_overlap` change, since old
+    chunks would then have the wrong boundaries.
+
+    We pass our own Gemini vectors to `collection.upsert`; Chroma's built-in
+    embedding model is never invoked.
     """
     cfg = cfg or load_config()
     cfg.ensure_dirs()
     llm = llm or LLM(cfg)
 
     client = chromadb.PersistentClient(path=str(cfg.chroma_dir))
-    existing = {c.name for c in client.list_collections()}
-    if COLLECTION_NAME in existing:
-        client.delete_collection(COLLECTION_NAME)
-    collection = client.create_collection(
-        COLLECTION_NAME, embedding_function=None
-    )
+    collection = _open_collection(client, rebuild=rebuild)
 
     for batch in _batches(chunks, _EMBED_BATCH):
         vectors = llm.embed([c.text for c in batch])
-        collection.add(
+        collection.upsert(
             ids=[c.chunk_id for c in batch],
             documents=[c.text for c in batch],
             embeddings=vectors,
@@ -135,13 +155,13 @@ def embed_and_store(
     return collection
 
 
-def ingest(cfg: Config | None = None) -> "chromadb.Collection":
+def ingest(cfg: Config | None = None, *, rebuild: bool = False) -> "chromadb.Collection":
     """Full pipeline: corpus files -> chunks -> embeddings -> Chroma."""
     cfg = cfg or load_config()
     chunks = build_chunks(
         cfg.corpus_dir, chunk_size=cfg.chunk_size, overlap=cfg.chunk_overlap
     )
-    return embed_and_store(chunks, cfg=cfg)
+    return embed_and_store(chunks, cfg=cfg, rebuild=rebuild)
 
 
 if __name__ == "__main__":
@@ -150,6 +170,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="chunk only, skip embedding/storage"
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="drop and reindex the collection from scratch (use after changing "
+        "--chunk-size/--chunk-overlap); default is incremental upsert",
     )
     args = parser.parse_args()
     cfg = load_config()
@@ -168,6 +194,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
 
     llm = LLM(cfg)
-    collection = embed_and_store(chunks, cfg=cfg, llm=llm)
-    print(f"\nstored {collection.count()} chunks in {cfg.chroma_dir}")
+    collection = embed_and_store(chunks, cfg=cfg, llm=llm, rebuild=args.rebuild)
+    mode = "rebuilt" if args.rebuild else "upserted (incremental)"
+    print(f"\n{mode}: {collection.count()} chunks now in {cfg.chroma_dir}")
     print("llm usage:", llm.usage.as_dict())

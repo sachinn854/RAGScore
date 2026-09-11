@@ -106,9 +106,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def load_config(argv: list[str] | None = None) -> Config:
-    """Return a Config built from the environment merged with CLI overrides."""
-    parser = argparse.ArgumentParser(parents=[build_arg_parser()])
-    args = parser.parse_args(argv)
+    """Return a Config built from the environment merged with CLI overrides.
+
+    Unknown flags are ignored so a module can add its own (e.g. ``--question``)
+    without upsetting the shared config parsing.
+    """
+    parser = argparse.ArgumentParser(add_help=False, parents=[build_arg_parser()])
+    args, _ = parser.parse_known_args(argv)
     return Config.from_env(**vars(args))
 
 
