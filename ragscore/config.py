@@ -47,6 +47,7 @@ class Config:
     top_k: int = 5
     # artifact paths
     corpus_dir: Path = _ROOT / "data" / "corpus"
+    eval_set_path: Path = _ROOT / "data" / "eval_set.jsonl"
     chroma_dir: Path = _ROOT / "chroma"
     cache_dir: Path = _ROOT / ".cache"
     results_dir: Path = _ROOT / "results"
