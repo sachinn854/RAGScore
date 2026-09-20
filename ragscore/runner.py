@@ -23,7 +23,7 @@ from .metrics.retrieval import hit_at_k, precision_at_k, reciprocal_rank, recall
 from .rag import generate
 
 # Reported average of "reciprocal_rank" across questions is MRR by definition.
-_METRIC_FIELDS = [
+METRIC_FIELDS = [
     "precision_at_k",
     "recall_at_k",
     "hit_at_k",
@@ -87,7 +87,7 @@ def run_eval(cfg: Config | None = None, llm: LLM | None = None) -> dict:
 
     averages = {
         name: sum(getattr(r, name) for r in per_question) / len(per_question)
-        for name in _METRIC_FIELDS
+        for name in METRIC_FIELDS
     }
 
     return {

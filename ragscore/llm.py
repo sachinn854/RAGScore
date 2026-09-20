@@ -180,10 +180,15 @@ class LLM:
                 misses.append(i)
 
         if misses:
+            # Gemini's free tier caps embedding requests per minute; a burst
+            # (e.g. re-ingesting many chunks in a row) needs patient retries
+            # -- 6 tries doubling from 5s comfortably outlasts a 1-minute quota window.
             resp = _retry(
                 lambda: self._embed_client.embeddings.create(
                     model=model, input=[texts[i] for i in misses], dimensions=dim
-                )
+                ),
+                tries=6,
+                base=5.0,
             )
             for slot, item in zip(misses, resp.data):
                 vectors[slot] = item.embedding

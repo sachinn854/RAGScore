@@ -15,7 +15,7 @@ from rich.table import Table
 
 from .config import build_arg_parser, load_config
 
-_METRIC_LABELS = {
+METRIC_LABELS = {
     "precision_at_k": "precision@k",
     "recall_at_k": "recall@k",
     "hit_at_k": "hit@k",
@@ -45,7 +45,7 @@ def print_summary(results: dict, console: Console) -> None:
     table.add_column("metric")
     table.add_column("average", justify="right")
     for name, val in results["averages"].items():
-        table.add_row(_METRIC_LABELS.get(name, name), f"{val:.3f}")
+        table.add_row(METRIC_LABELS.get(name, name), f"{val:.3f}")
     console.print(table)
 
 
@@ -53,7 +53,7 @@ def print_worst_cases(
     results: dict, console: Console, *, metric: str = "answer_correctness", n: int = 5
 ) -> None:
     worst = sorted(results["questions"], key=lambda q: q[metric])[:n]
-    table = Table(title=f"Worst {n} by {_METRIC_LABELS.get(metric, metric)}")
+    table = Table(title=f"Worst {n} by {METRIC_LABELS.get(metric, metric)}")
     table.add_column("id")
     table.add_column("question")
     table.add_column(metric, justify="right")
