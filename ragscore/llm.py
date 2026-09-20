@@ -1,4 +1,4 @@
-"""LLM access layer: chat (OpenRouter) + embeddings (Gemini), with a disk cache.
+"""This is LLM access layer: chat (OpenRouter) + embeddings (Gemini), with a disk cache.
 
 Every LLM / embedding call goes through here for two reasons:
 1. **Cache** -- the same (model, params, payload) resolves to `.cache/<hash>.json`

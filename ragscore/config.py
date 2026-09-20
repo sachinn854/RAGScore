@@ -75,12 +75,12 @@ class Config:
         return cls(**base)  # type: ignore[arg-type]
 
     def ensure_dirs(self) -> None:
-        """Create artifact directories. Explicit side-effect -- call before writing."""
+        """Create folders the program needs while it runs - index, cache, and output"""
         for d in (self.chroma_dir, self.cache_dir, self.results_dir):
             d.mkdir(parents=True, exist_ok=True)
 
     def masked_dict(self) -> dict[str, object]:
-        """Serialisable view for logs / results JSON -- secrets masked, Path -> str."""
+        """Serialisable view for logs / results JSON -- secrets get masked, and paths get converted into strings."""
         out: dict[str, object] = {}
         for f in fields(self):
             val = getattr(self, f.name)
